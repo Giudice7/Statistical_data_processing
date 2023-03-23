@@ -1,7 +1,0 @@
-{
-    "installOptions": {
-        "installFromRepository": true,
-        "libraryPath": "C:/Users/Rocco/Desktop/Statistical_data_processing/statistical_data_processing/renv/library/R-4.2/x86_64-w64-mingw32",
-        "installDependencies": true
-    }
-}
