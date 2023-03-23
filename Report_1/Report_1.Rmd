@@ -12,6 +12,9 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{r, echo=FALSE, include=FALSE}
 library(DT)
 library(plotly)
+library(ggplot2)
+library(scales)
+library(QuantPsyc)
 Sys.setlocale("LC_ALL", "English")
 ```
 
@@ -19,6 +22,13 @@ Sys.setlocale("LC_ALL", "English")
 ### Introduction
 
 Energy consumption is a critical concern worldwide due to its impact on the environment, economy, and human welfare. Therefore, understanding the factors that influence energy consumption in buildings is essential to optimize energy use and minimize its negative effects. Multiple linear regression is a statistical method used to model the relationship between a dependent variable and several independent variables simultaneously. In this report, we perform a multiple linear regression analysis to investigate the factors that affect energy consumption. The analysis is based on a dataset that includes information on natural gas consumption and several variables related to weather conditions (such as the mean external temperature and the irradiance). The objective of this study is to identify the significant predictors of energy consumption and provide insights into the underlying mechanisms that drive energy use.
+
+The report is organized in the following sections:
+
+* Dataset: ...
+* Outlier detection: ...
+* Multiple linear regression model: ...
+* Conclusion: ...
 
 ### Dataset 
 
@@ -50,8 +60,6 @@ data <- data %>%
     day_name = weekdays(as.Date(data$date)))
 
 ```
-
-
 
 <center>
 ```{r, echo=FALSE, fig.height=4}
@@ -127,4 +135,208 @@ plot_ly(data = data,
 
 ```
 </center>
+
+Will be useful for the further steps to summarize the dataset in terms of statistical quantities and distributions:
+
+```{r, echo=FALSE}
+summary(data)
+```
+
+
+<center>
+```{r, echo=FALSE, fig.width=10}
+
+density_energy <- density(data$Energy) 
+
+dens_energy <- plot_ly(
+  x = ~density_energy$x,
+  y = ~density_energy$y,
+  type = 'scatter', mode = 'lines', fill = 'tozeroy',
+  line = list(
+    color = "#1EB962"
+  ),
+  fillcolor = "rgba(30, 185, 98, 0.5)",
+  hovertemplate = paste('<b>Energy</b>: %{x} [Smc]',
+                        '<br><b>Density</b>: %{y}<br>'
+  )
+) %>%
+  layout(
+    xaxis = list(
+      title = "Gas consumption [Smc]",
+      range = c(0, max(data$Energy))
+    ),
+    yaxis = list(
+      showticklabels = FALSE
+    )
+  )
+
+boxplot_energy <- plot_ly(
+  type = "box",
+  data = data,
+  x = ~Energy,
+  jitter = 0.3,
+  line = list(
+    color = "#1EB962"
+  ),
+  fillcolor = "rgba(30, 185, 98, 0.5)",
+  name = "Energy"
+    ) %>%
+  layout(
+    yaxis = list(
+      showticklabels = FALSE
+    )
+  )
+
+
+plot_energy <- subplot(dens_energy, boxplot_energy, nrows = 2, heights = c(0.7, 0.3),
+                       shareX = TRUE) %>%
+  layout(
+    showlegend = FALSE,
+    xaxis = list(
+      title = "Gas consumption [Smc]"
+    )
+  )
+
+density_Text <- density(data$Text) 
+
+dens_Text <- plot_ly(
+  x = ~density_Text$x,
+  y = ~density_Text$y,
+  type = 'scatter', mode = 'lines', fill = 'tozeroy',
+  line = list(
+    color = "#CF0000"
+  ),
+  fillcolor = "rgba(207, 0, 0, 0.5)",
+  hovertemplate = paste('<b>Temperature</b>: %{x} [°C]',
+                        '<br><b>Density</b>: %{y}<br>'
+  )
+) %>%
+  layout(
+    xaxis = list(
+      title = "Temperature [°C]",
+      range = c(min(data$Text), max(data$Text))
+    ),
+    yaxis = list(
+      showticklabels = FALSE
+    )
+  )
+
+boxplot_Text <- plot_ly(
+  type = "box",
+  data = data,
+  x = ~Text,
+  jitter = 0.3,
+  line = list(
+    color = "#CF0000"
+  ),
+  name = "Text",
+  fillcolor = "rgba(207, 0, 0, 0.5)"
+    ) %>%
+  layout(
+    yaxis = list(
+      showticklabels = FALSE
+    )
+  )
+
+plot_Text <- subplot(dens_Text, boxplot_Text, nrows = 2, heights = c(0.7, 0.3),
+                       shareX = TRUE) %>%
+  layout(
+    showlegend = FALSE,
+    xaxis = list(
+      title = "Temperature [°C]"
+    )
+  )
+
+density_Iext <- density(data$Iext) 
+
+dens_Iext <- plot_ly(
+  x = ~density_Iext$x,
+  y = ~density_Iext$y,
+  type = 'scatter', mode = 'lines', fill = 'tozeroy',
+  line = list(
+    color = "#CFA000"
+  ),
+  fillcolor = "rgba(207, 160, 0, 0.5)",
+  hovertemplate = paste('<b>Irradiance</b>: %{x} [W/m2]',
+                        '<br><b>Density</b>: %{y}<br>'
+  )
+) %>%
+  layout(
+    xaxis = list(
+      title = "Irradiance [W/m2]",
+      range = c(min(data$Iext), max(data$Iext))
+    ),
+    yaxis = list(
+      showticklabels = FALSE
+    )
+  )
+
+boxplot_Iext <- plot_ly(
+  type = "box",
+  data = data,
+  x = ~Iext,
+  jitter = 0.3,
+  line = list(
+    color = "#CFA000"
+  ),
+  fillcolor = "rgba(207, 160, 0, 0.5)",
+  name = "Iext"
+    ) %>%
+  layout(
+    yaxis = list(
+      showticklabels = FALSE
+    )
+  )
+
+plot_Iext <- subplot(dens_Iext, boxplot_Iext, nrows = 2, heights = c(0.7, 0.3),
+                       shareX = TRUE) %>%
+  layout(
+    showlegend = FALSE,
+    xaxis = list(
+      title = "Irradiance [W/m2]"
+    )
+  )
+
+plot_distr <- subplot(plot_energy, plot_Text, plot_Iext, nrows = 1, titleX = TRUE) 
+plot_distr
+```
+</center>
+
+### Outlier detection
+
+In this section, an outlier detection process is employed, with the aim to identify possible values of the variable analyzed that can be considered far enough from the normal disitribution. Since we are operating with a multivariate distribution of data, the Mahalanobis Distance (MD) seems to be the most appropriate way to deal with. It is important to note that the Mahalanobis distance is sensitive to the distribution of the data and the covariance structure. Therefore, it is recommended to check the assumptions of normality before applying the Mahalanobis distance method for outlier detection.
+
+To check for multivariate normality we can employ the *Mardia's test*, which is an extension of the univariate skewness and kurtosis tests to the multivariate case. The test is based on the calculation of the multivariate skewness and kurtosis of the data. The multivariate skewness measures the degree of asymmetry in the distribution, while the multivariate kurtosis measures the degree of peakedness or flatness in the distribution. If the dataset is approximately multivariate normal, the multivariate skewness and kurtosis should be close to zero.
+
+The null hypothesis of Mardia's test is that the data follows a multivariate normal distribution. If the p-value of the test is below a chosen significance level (e.g., 0.05), we reject the null hypothesis and conclude that the data is not multivariate normal.
+
+Performing the test we obtain:
+
+```{r, echo=FALSE}
+mult.norm(data[3:5])$mult.test
+```
+
+How can be observed, the p-value of skewness is under 0.05, so we can accept the null hypothesis and declare that the distribution is not normal. For this reason, we have to normalize the multivariate distribution, using the *scale* function.
+
+After the standardization, we can calculate the mahalanobis distance and perform the *Chi-square* test to .... (eliminare Domeniche e ripetere!)
+```{r, echo=FALSE}
+# Standardize data
+data_matrix <- as.matrix(data[, c("Energy", "Text", "Iext")])
+data_norm <- data.frame(scale(data_matrix))
+
+# Calculate mahalanobis distance
+data$mahalanobis <-  mahalanobis(x = data_norm,
+                                 center = colMeans(data_norm),
+                                 cov = cov(data_norm))
+
+alpha <- .05
+cutoff <- qchisq(p = 1 - alpha, df = 3)
+
+DT::datatable(data)
+
+outliers <- data$date[which(data$mahalanobis > cutoff)]
+outliers
+
+```
+
 
