@@ -13,8 +13,6 @@ knitr::opts_chunk$set(echo = TRUE)
 library(DT)
 library(plotly)
 library(ggplot2)
-library(scales)
-library(QuantPsyc)
 Sys.setlocale("LC_ALL", "English")
 ```
 
@@ -73,7 +71,8 @@ plot_ly(data = data,
         text = ~day_name,
         hovertemplate = paste('<b>Date</b>: %{x}',
                         '<br><b>Gas consumption</b>: %{y} [Smc]<br>',
-                        '<b>Weekday</b>: %{text}'),
+                        '<b>Weekday</b>: %{text}',
+                          "<extra></extra>"),
         line = list(
           color = "#1EB962"
         )) %>%
@@ -96,7 +95,8 @@ plot_ly(data = data,
         text = ~day_name,
         hovertemplate = paste('<b>Date</b>: %{x}',
                         '<br><b>Temperature</b>: %{y} [°C]<br>',
-                        '<b>Weekday</b>: %{text}'),
+                        '<b>Weekday</b>: %{text}',
+                          "<extra></extra>"),
         line = list(
           color = "#CF0000"
         )) %>%
@@ -119,7 +119,8 @@ plot_ly(data = data,
         text = ~day_name,
         hovertemplate = paste('<b>Date</b>: %{x}',
                         '<br><b>Irradiance</b>: %{y} [W/m2]<br>',
-                        '<b>Weekday</b>: %{text}'),
+                        '<b>Weekday</b>: %{text}',
+                          "<extra></extra>"),
         line = list(
           color = "#CFA000"
         )) %>%
@@ -304,39 +305,112 @@ plot_distr
 
 ### Outlier detection
 
-In this section, an outlier detection process is employed, with the aim to identify possible values of the variable analyzed that can be considered far enough from the normal disitribution. Since we are operating with a multivariate distribution of data, the Mahalanobis Distance (MD) seems to be the most appropriate way to deal with. It is important to note that the Mahalanobis distance is sensitive to the distribution of the data and the covariance structure. Therefore, it is recommended to check the assumptions of normality before applying the Mahalanobis distance method for outlier detection.
+In this section, an outlier detection process is employed with the aim to identify possible values of the variables analyzed that can be consider far enough from the distribution of data and that can lead to incorrect or misleading conclusions when developing a multiple regression model. 
 
-To check for multivariate normality we can employ the *Mardia's test*, which is an extension of the univariate skewness and kurtosis tests to the multivariate case. The test is based on the calculation of the multivariate skewness and kurtosis of the data. The multivariate skewness measures the degree of asymmetry in the distribution, while the multivariate kurtosis measures the degree of peakedness or flatness in the distribution. If the dataset is approximately multivariate normal, the multivariate skewness and kurtosis should be close to zero.
+In this case one way to operate could be the use of the Cook's distance, which is a measure of the influence of each observation on a regression analysis. It can be used to identify multivariate outliers in non-normal distributions, like ours, by examining the values of Cook's distance for each observation. Large values of Cook's distance indicate observations that are having a disproportionate influence on the regression analysis, which could be due to being outliers.
 
-The null hypothesis of Mardia's test is that the data follows a multivariate normal distribution. If the p-value of the test is below a chosen significance level (e.g., 0.05), we reject the null hypothesis and conclude that the data is not multivariate normal.
+Cook's distance is evaluated as:
 
-Performing the test we obtain:
+$$D_i = \frac{\sum_{j=1}^n (\hat{y_j} - \hat{y_{j(i)}})}{ps^2}$$
+where $\hat{y_j}$ is the predition of the mean using the j observation and $\hat{y_{j(i)}}$ is the prediction of the mean without the i-observation, $s^2$ is the mean square error and $p$ is the number of independent variables.
+
+To better visualize the dataset, a 3D scatter plot is reported in the figure below, coloring in different ways the $DayoftheWeek$.
+
+<center>
+```{r, echo=FALSE, fig.width=10, warning=FALSE, message=FALSE}
+scatter_3D <- plot_ly(type = "scatter3d",
+               data = data,
+               x = ~Text, y = ~Iext, z = ~Energy,
+               color = ~day_name, 
+               text = ~date,
+               colors = c("#fde725", "#90d743", "#35b779", "#21918c", "#31688e", "#443983", "#440154"),
+               hovertemplate = paste("<b>Temperature: %{x} [°C]",
+                                     '<br><b>Irradiance</b>: %{y} [W/m2]<br>',
+                                     '<b>Gas consumption</b>: %{z} [Smc]',
+                                     '<br><b>Date</b>: %{text}<br>',
+                                     "<extra></extra>")
+) %>%
+  layout(legend = list(orientation = "h"),
+         scene = list(
+           xaxis = list(
+             title = "Temperature [°C]"
+           ),
+           yaxis = list(
+             title = "Irradiance [W/m2]"
+           ),
+           zaxis = list(
+             title = "Gas consumption [Smc]"
+           )
+         )
+  )
+
+scatter_3D
+```
+</center>
+
+As we can easily seen, Sundays are day of the week where there is no energy consumption, so can be easily eliminated from the model to improve the accuracy. 
 
 ```{r, echo=FALSE}
-mult.norm(data[3:5])$mult.test
+data_model <- data %>%
+  subset(day_name != "Sunday")
+rownames(data_model) <- 1:nrow(data_model)
 ```
 
-How can be observed, the p-value of skewness is under 0.05, so we can accept the null hypothesis and declare that the distribution is not normal. For this reason, we have to normalize the multivariate distribution, using the *scale* function.
+Now we can perform the model and evaluate the Cook's distance:
 
-After the standardization, we can calculate the mahalanobis distance and perform the *Chi-square* test to .... (eliminare Domeniche e ripetere!)
 ```{r, echo=FALSE}
-# Standardize data
-data_matrix <- as.matrix(data[, c("Energy", "Text", "Iext")])
-data_norm <- data.frame(scale(data_matrix))
-
-# Calculate mahalanobis distance
-data$mahalanobis <-  mahalanobis(x = data_norm,
-                                 center = colMeans(data_norm),
-                                 cov = cov(data_norm))
-
-alpha <- .05
-cutoff <- qchisq(p = 1 - alpha, df = 3)
-
-DT::datatable(data)
-
-outliers <- data$date[which(data$mahalanobis > cutoff)]
-outliers
-
+model <- lm(Energy ~ Text + Iext, data = data_model)
+# summary(model)
+data_model$distance_cooks <- cooks.distance(model)
+DT::datatable(data_model[, c("date", "day_name", "Energy", "Text", "Iext", "distance_cooks")])
 ```
 
+A thumb's rule using the Cook's distance to outlier detection is considering a threshold value of $4/n$, where $n$ is the number of observations (130). So, records with Cook's distance higher than $0.031$ are considered outliers and eliminated from the model to make it more accurate.
 
+Let's plot the Cook's distances and the threshold identified:
+
+<center>
+```{r, echo=FALSE, fig.width=10, message=FALSE}
+threshold <- 4/length(rownames(data_model))
+
+cooks_plot <- plot_ly(
+  type = "scatter",
+  data = data_model,
+  x = c(1:length(rownames(data_model))),
+  y =~ round(distance_cooks, 5),
+  text =~ date,
+  hovertemplate = paste('<br><b>Cook s distance</b>: %{y}<br>',
+                        '<b>Date</b>: %{text}',
+                          "<extra></extra>"),
+  name = ""
+) %>%
+  add_trace(
+    type = "scatter",
+    mode = "lines",
+    x = c(1:length(rownames(data_model))),
+    y = rep(x = threshold, 
+            times = length(rownames(data_model))),
+    hovertemplate = paste("Threshold: %{y}",
+                          "<extra></extra>")
+  ) %>%
+  layout(title = "Cook's distance plot",
+         xaxis = list(
+           title = "Index"
+         ),
+         yaxis = list(
+           title = "Cook's distance"
+         ),
+         showlegend = FALSE
+  )
+  
+cooks_plot
+
+outliers_date <- data_model$date[data_model$distance_cooks >= threshold]
+```
+</center>
+
+How we can see, 4 outliers have been identified using this metric, which are `r outliers_date`.
+
+Now we can eliminate these data and re-perform the linear regression model, evaluating its performance.
+
+### Multiple regression model
