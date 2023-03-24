@@ -1,8 +1,13 @@
 ---
-title: "Multiple linear regression for energy consumption data"
+title: "Multiple linear regression for energy data"
 author: "Rocco Giudice"
 date: "2023-03-31"
-output: html_document
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: cosmo
 ---
 
 ```{r setup, include=FALSE}
@@ -17,18 +22,18 @@ Sys.setlocale("LC_ALL", "English")
 ```
 
 
-### Introduction
+# Introduction
 
 Energy consumption is a critical concern worldwide due to its impact on the environment, economy, and human welfare. Therefore, understanding the factors that influence energy consumption in buildings is essential to optimize energy use and minimize its negative effects. Multiple linear regression is a statistical method used to model the relationship between a dependent variable and several independent variables simultaneously. In this report, we perform a multiple linear regression analysis to investigate the factors that affect energy consumption. The analysis is based on a dataset that includes information on natural gas consumption and several variables related to weather conditions (such as the mean external temperature and the irradiance). The objective of this study is to identify the significant predictors of energy consumption and provide insights into the underlying mechanisms that drive energy use.
 
 The report is organized in the following sections:
 
-* Dataset: ...
+* Dataset:
 * Outlier detection: ...
 * Multiple linear regression model: ...
 * Conclusion: ...
 
-### Dataset 
+# Dataset 
 
 The dataset utilized in this analysis is composed by 3 numerical variables, total daily gas consumption *Energy* $[Smc]$, mean daily external temperature *Text* $[°C]$, and mean solar irradiance *Iext* $[W/m^2]$ and 1 categorical variable, the day of the week *DayofWeek*. 
 
@@ -145,7 +150,7 @@ summary(data)
 
 
 <center>
-```{r, echo=FALSE, fig.width=10}
+```{r, echo=FALSE, fig.width=8}
 
 density_energy <- density(data$Energy) 
 
@@ -158,7 +163,8 @@ dens_energy <- plot_ly(
   ),
   fillcolor = "rgba(30, 185, 98, 0.5)",
   hovertemplate = paste('<b>Energy</b>: %{x} [Smc]',
-                        '<br><b>Density</b>: %{y}<br>'
+                        '<br><b>Density</b>: %{y}<br>',
+                          "<extra></extra>"
   )
 ) %>%
   layout(
@@ -209,7 +215,8 @@ dens_Text <- plot_ly(
   ),
   fillcolor = "rgba(207, 0, 0, 0.5)",
   hovertemplate = paste('<b>Temperature</b>: %{x} [°C]',
-                        '<br><b>Density</b>: %{y}<br>'
+                        '<br><b>Density</b>: %{y}<br>',
+                          "<extra></extra>"
   )
 ) %>%
   layout(
@@ -259,7 +266,8 @@ dens_Iext <- plot_ly(
   ),
   fillcolor = "rgba(207, 160, 0, 0.5)",
   hovertemplate = paste('<b>Irradiance</b>: %{x} [W/m2]',
-                        '<br><b>Density</b>: %{y}<br>'
+                        '<br><b>Density</b>: %{y}<br>',
+                          "<extra></extra>"
   )
 ) %>%
   layout(
@@ -303,7 +311,7 @@ plot_distr
 ```
 </center>
 
-### Outlier detection
+# Outlier detection
 
 In this section, an outlier detection process is employed with the aim to identify possible values of the variables analyzed that can be consider far enough from the distribution of data and that can lead to incorrect or misleading conclusions when developing a multiple regression model. 
 
@@ -317,7 +325,7 @@ where $\hat{y_j}$ is the predition of the mean using the j observation and $\hat
 To better visualize the dataset, a 3D scatter plot is reported in the figure below, coloring in different ways the $DayoftheWeek$.
 
 <center>
-```{r, echo=FALSE, fig.width=10, warning=FALSE, message=FALSE}
+```{r, echo=FALSE, fig.width=8, warning=FALSE, message=FALSE}
 scatter_3D <- plot_ly(type = "scatter3d",
                data = data,
                x = ~Text, y = ~Iext, z = ~Energy,
@@ -360,8 +368,9 @@ Now we can perform the model and evaluate the Cook's distance:
 
 ```{r, echo=FALSE}
 model <- lm(Energy ~ Text + Iext, data = data_model)
-# summary(model)
+
 data_model$distance_cooks <- cooks.distance(model)
+
 DT::datatable(data_model[, c("date", "day_name", "Energy", "Text", "Iext", "distance_cooks")])
 ```
 
@@ -370,7 +379,7 @@ A thumb's rule using the Cook's distance to outlier detection is considering a t
 Let's plot the Cook's distances and the threshold identified:
 
 <center>
-```{r, echo=FALSE, fig.width=10, message=FALSE}
+```{r, echo=FALSE, fig.width=8, message=FALSE}
 threshold <- 4/length(rownames(data_model))
 
 cooks_plot <- plot_ly(
@@ -413,4 +422,96 @@ How we can see, 4 outliers have been identified using this metric, which are `r 
 
 Now we can eliminate these data and re-perform the linear regression model, evaluating its performance.
 
-### Multiple regression model
+# Multiple regression model
+
+Once data are cleaned, it is possible to perform a linear regression model using the external temperature $T_{ext}$ and $I_{ext}$.
+
+```{r, echo=FALSE}
+data_final <- data_model %>%
+  subset(!(date %in% outliers_date))
+rownames(data_final) <- c(1:length(rownames(data_final)))
+
+model_final <- lm(formula = Energy ~ Text + Iext,
+                  data = data_final)
+
+summary(model_final)
+```
+How can be easily observed, the regression model employed yields a robust result. In fact we can observe the following features:
+
+* The $R^2$ takes an high value, `r summary(model_final)$r.squared`, which is very similar to the adjusted $R^2$, `r summary(model_final)$adj.r.squared`, which means that the predictors used in the model are not redundant and explain very well the variance in the data.
+* The same observation can be done looking at the p-value of the coefficients, which all have an high statistical significance.
+* The F statistic, which is used to perform a model utility test through considering a F distribution, is large, meaning that the null hypothesis is rejected and there is a useful linear relationship between $Energy$ and the other predictors.
+
+For completeness we show also some plot metric used to visualize the strenght of the regression model.
+
+<center>
+```{r, echo=FALSE, fig.width=8, message=FALSE}
+# Fitted vs Residual plot
+LOESS1 <- loess.smooth(model_final$fitted.values, model_final$residuals)
+
+plot_fit_vs_res <- plot_ly(
+  type = "scatter",
+  mode = "markers",
+  x = model_final$fitted.values,
+  y = model_final$residuals,
+  text = data_final$date,
+  hovertemplate = ~paste("<b>Fitted value</b>: %{x}",
+                     "<br><b>Residual</b>: %{y}</br>",
+                     "<b>Date</b>: %{text}",
+                     "<extra></extra>")
+) %>%
+  add_trace(
+    type = "scatter", mode = "line",
+    x = LOESS1$x, y = LOESS1$y, 
+    line = list(width = 2),
+    text = rep("", 50),
+    hovertemplate = paste("Smooth function",
+                          "<extra></extra>")
+  ) %>%
+  layout(
+    showlegend = FALSE,
+    xaxis = list(
+      title = "Fitted values",
+      zerolinecolor = "rgba(0, 0, 0, 0)"
+    ),
+    yaxis = list(
+      title = "Residuals",
+      zerolinecolor = "rgba(0, 0, 0, 0)"
+    )
+  )
+
+# QQplot
+qq_data <- qqnorm(model_final$residuals, plot.it = FALSE)
+qq_data <- data.frame(x = qq_data$x, y = qq_data$y)
+
+plot_qq <- plot_ly(
+  type = "scatter", mode = "markers",
+  data = qq_data, 
+  x = ~x, y = ~y,
+  hovertemplate = paste("<b>Theoretical Quantiles</b>: %{x}",
+                        "<br><b>Sample Quantiles</b>: %{y}</br>",
+                        "<extra></extra>")
+) %>%
+  add_trace(
+    type = "scatter", mode = "lines",
+    x = c(min(qq_data$x), max(qq_data$x)),
+    y = c(min(qq_data$y), max(qq_data$y)), 
+    line = list(color = "red")
+  ) %>%
+  layout(
+    showlegend = FALSE,
+    xaxis = list(
+      title = "Theoretical Quantiles"
+    ),
+    yaxis = list(
+      title = "Sample Quantiles"
+    )
+  )
+
+plot_model <- subplot(plot_fit_vs_res, plot_qq, nrows = 1, titleX = TRUE, titleY = TRUE, margin = 0.07) 
+
+plot_model
+```
+</center>
+
+# Conclusion
