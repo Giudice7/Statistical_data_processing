@@ -28,10 +28,10 @@ Energy consumption is a critical concern worldwide due to its impact on the envi
 
 The report is organized in the following sections:
 
-* Dataset:
-* Outlier detection: ...
-* Multiple linear regression model: ...
-* Conclusion: ...
+* Dataset: a summary of the dataset is presented, visualizing the distributions of the quantities in the dataset.
+* Outlier detection: in depth analysis of outliers in the dataset using the Cook's distance metric.
+* Multiple linear regression model: building of the regression model using two predictors.
+* Conclusion.
 
 # Dataset 
 
@@ -424,7 +424,7 @@ Now we can eliminate these data and re-perform the linear regression model, eval
 
 # Multiple regression model
 
-Once data are cleaned, it is possible to perform a linear regression model using the external temperature $T_{ext}$ and $I_{ext}$.
+Once data are cleaned, it is possible to perform a linear regression model using the external temperature $T_{ext}$ and $I_{ext}$ as predictors and independent variables for $Energy$.
 
 ```{r, echo=FALSE}
 data_final <- data_model %>%
@@ -440,9 +440,11 @@ How can be easily observed, the regression model employed yields a robust result
 
 * The $R^2$ takes an high value, `r summary(model_final)$r.squared`, which is very similar to the adjusted $R^2$, `r summary(model_final)$adj.r.squared`, which means that the predictors used in the model are not redundant and explain very well the variance in the data.
 * The same observation can be done looking at the p-value of the coefficients, which all have an high statistical significance.
-* The F statistic, which is used to perform a model utility test through considering a F distribution, is large, meaning that the null hypothesis is rejected and there is a useful linear relationship between $Energy$ and the other predictors.
+* The F statistic, which is used to perform a model utility test through considering a F distribution, is large, meaning that the null hypothesis is rejected and there is a useful linear relationship between $Energy$ and the predictors.
 
-For completeness we show also some plot metric used to visualize the strenght of the regression model.
+Furthermore, the coefficients found have a negative sign, meaning that the energy consumption become higher if the external temperature and irradiance assume a lower value, because free gains are minor. The external temperature is the one that accounts for more variation in the prediction and in fact has a lower p-value, in comparison with the irradiance, which has a less importance, but still notable, in the model.
+
+For completeness we show also some plot metric used to visualize the strength of the regression model.
 
 <center>
 ```{r, echo=FALSE, fig.width=8, message=FALSE}
@@ -514,4 +516,12 @@ plot_model
 ```
 </center>
 
+For example, the *Fitted vs Residuals* plot (on the left) shows that residuals are higher around the center of the distribution of gas consumption, so the model will be less accurate in that zone compared to the extreme ones. 
+
 # Conclusion
+
+In this report, a multiple regression model has been developed using energy-related data. In particular, the process has consisted of a data visualization step, where the distribution of the variables involved have been analyzed; a robust step of outlier detection, in order to make more robust the model to be develop; the development of the multiple regression model, which resulted in an high $R^2$ value and an easily interpretable result of the principal driven of the energy consumption in a building.
+
+The model exploited is at the same time simple but complete, reaching an high value of accuracy using only two metereological variables: temperature and irradiance. In order to enhance the model's robustness without incorporating categorical variables, such as the day of the week, which pose difficulties in regression models, Sundays were intentionally omitted. 
+
+From the experience gained over time, other important variables that can help to reach an higher level of the prediction are related on the occupancy behaviors, which can lead to the maximum reliable of these models.
