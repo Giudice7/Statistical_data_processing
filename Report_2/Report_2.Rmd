@@ -1,0 +1,360 @@
+---
+title: "High dimensional clustering for Energy Performance Certificates (EPCs)"
+author: "Rocco Giudice"
+date: "2023-03-31"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: cosmo
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+```
+
+```{r libraries, include=FALSE}
+# Libraries
+library(tidyverse)
+library(DT)
+library(plotly)
+library(factoextra)
+```
+
+
+# Introduction
+
+Energy Performance Certificates (EPCs) are an essential component of the building sector's drive towards more sustainable and energy-efficient buildings. EPCs are documents that outline the energy efficiency rating of a building, providing information on its energy usage and carbon emissions. Analyzing the data on EPCs is crucial in understanding the energy performance of buildings and identifying areas where improvements can be made to increase energy efficiency and reduce carbon emissions.
+
+In this context, statistical analysis can provide valuable insights into the energy performance of buildings, helping to identify opportunities for energy savings, and informing decision-making around building design, retrofitting, and operation. This makes data analysis on EPCs a key tool in the transition towards a more sustainable built environment.
+
+In this report we perform an high dimensional clustering on EPCs data reducing the dimensionality through Principal Component Analysis (PCA), a statistical approach that can be used to analyze high-dimensional data and capture the most important information from it. This is done by transforming the original data into a lower-dimensional space while collating highly correlated variables together.
+
+The report is organized as follows:
+
+* Dataset: a summary of the dataset is provided, selecting only the features useful for this analysis.
+* Outlier detection: through interquartile method, outlier detection is performed for all the relevant variable in the dataset.
+* Principal Component Analysis: the PCA is performed analyzing and choosing only the relevant component for describing the majority of the dataset.
+* K-means clustering: a clustering is performed on the relevant principal component of the dataset, statistically describing the output.
+
+# Dataset
+
+The dataset used for the analysis is provided by *Regione Piemonte*, at https://www.dati.piemonte.it/#/catalogodetail/regpie_ckan_ckan2_yucca_sdp_smartdatanet.it_Sicee_v_datigen_energetici_v2_8407.
+
+The dataset contains 633657 rows and 72 columns, where each row contains the certificate data for a building and in columns there are several attributes, both descriptive and numerical. Numerical variables regard the geometrical and performance attributes of the buildings. The details on the variable meaning are provided in the link mentioned above.
+
+For simplicity, only a subset of these data has been considered, in particular only certificate that were submitted since 2019, for buildings of category E1 (households) and with winter and summer air conditioning and hot water production. In this way the number of certificates analyzed drops to 26304. 
+
+In the table below is summarized the dataset:
+
+```{r, data_load}
+data <- read.csv(
+  file = file.path("data", "data.csv"),
+  sep = ";"
+) %>%
+  mutate(classe_energetica = ifelse(classe_energetica %in% c("A", "A1", "A2", "A3", "A4"), "A", classe_energetica))
+
+var <- c("id_certificato", "sup_disperdente", "sup_riscaldata", "vol_lordo_riscaldato", "anno_costruzione", "classe_energetica", "eph", "yie", "asol_asup", "gradi_giorno", "rapporto_sv", "ht", "trasmittanza_med_sup_opache", "trasmittanza_med_sup_trasp", "sup_disp_tot_opaca", "sup_disp_tot_trasp", "fabb_risc_impianto_etag")
+
+data <- data[, var]
+
+# Transform in numeric
+var_char <- c("classe_energetica")
+
+data[, -which(names(data) %in% var_char)] <- data.frame(lapply(data[, -which(names(data) %in% var_char)], function(i) as.numeric(sub(',', '.', i, fixed = TRUE))))
+
+data$rap_sup_opaca_disp <- data$sup_disp_tot_opaca/data$sup_disperdente * 100
+
+data$rap_sup_trasp_disp <- data$sup_disp_tot_trasp/data$sup_disperdente * 100
+
+data <- data[, -which(names(data) %in% c("sup_disp_tot_opaca", "sup_disp_tot_trasp"))]
+
+# Eliminate NA
+data <- na.omit(data)
+
+rownames(data) <- c(1:length(rownames(data)))
+
+DT::datatable(data, options = list(scrollX = TRUE))
+```
+
+
+# Outlier detection
+
+In this section, outlier detection is performed in order to avoid the presence of clusters with only few buildings that have unusual geometric or performance variables.
+
+The process consists in the detection of values far from the distribution of each single variable considered using the interquartile method, summarized in the following equation:
+
+$$OUT = Q_{1} - 5 \cdot IQR \:\lor\: Q_{3} + 5 \cdot IQR$$
+where $Q_1$ and $Q_3$ are the first and third quartile, while IQR is their difference. We use a coefficient equal to 5 in order to eliminate only very extreme values.
+
+```{r, outlier_detection}
+
+IQRoutlier <- function(x) {
+  
+  q1 <- quantile(x, 0.25, na.rm = TRUE)
+  q3 <- quantile(x, 0.75, na.rm = TRUE)
+  
+  IQR = q3 - q1
+  
+  coeff <- 5
+  
+  outlier <- which(x < q1 - coeff * IQR | x > q3 + coeff * IQR)
+  
+  return(outlier)
+
+}
+
+var_pca <- names(data)[-which(names(data) %in% c("classe_energetica", "id_certificato", "eph", "gradi_giorno"))]
+
+outliers <- c()
+
+for (col_name in var_pca) {
+  
+  outliers <- append(outliers, IQRoutlier(data[, col_name]))
+}
+
+outliers <- unique(outliers)
+
+data_cleaned <- data[-outliers, ]
+rownames(data_cleaned) <- c(1:length(rownames(data_cleaned)))
+
+```
+
+```{r, plot_outlier}
+
+
+```
+
+In this case, outlier detection led to the removal of `r length(outliers)` records, which contained at least one outlier in their set.
+
+# Principal Component Analysis (PCA)
+
+After cleaning out outliers, it is possible to conduct the PCA process, with the aim to identify the principal components of the dataset that explain enough the variability of the buildings attributes. To perform this, data are scaled using Z-score standardization and than PCA is computed using *prcomp* function from the *stats* package.
+
+The summary of the PCA process is shown below:
+
+```{r, PCA}
+data_pca <- data_cleaned[, var_pca]
+
+# Scaling data
+data_scaled <- scale(data_pca, center = TRUE, scale = TRUE)
+#data_pca <- data_pca[-which(!is.infinite(rowSums(data_scaled))),]
+
+# Eliminating NaN and Inf values
+data_scaled <- data_scaled[!is.infinite(rowSums(data_scaled)),]
+data_scaled <- na.omit(data_scaled)
+
+pca <- prcomp(data_scaled)
+summary(pca)
+
+```
+As you can easily see, just the first 9 components are responsible for almost the 90% of the variance in the dataset, as represented in the figure below:
+
+```{r, variance}
+variance <- pca$sdev^2/sum(pca$sdev^2)
+
+# Screen plot
+plot_ly(
+  type = "bar",
+  x = paste("Comp.", c(1:length(variance))),
+  y = variance,
+  hovertemplate = paste("%{x}",
+                        "<br><b>Variance </b>: %{y}<br>",
+                        "<extra></extra>")
+) %>%
+  add_trace(
+    type = "scatter",
+    mode = "lines",
+    x = paste("Comp.", c(1:length(variance))),
+    y = cumsum(variance),
+    hovertemplate = paste("%{x}",
+                        "<br><b>Cum. Variance </b>: %{y}<br>",
+                        "<extra></extra>")
+  ) %>%
+  layout(
+    showlegend = FALSE,
+    xaxis = list(
+      categoryorder = "array",
+      categoryarray = paste("Comp.", c(1:length(variance))),
+      title = "Component"
+    ),
+    yaxis = list(
+      title = "Variance"
+    )
+  )
+```
+
+In order to comprehend which variables mostly contributes to each principal components, an heat map with the contribution of the variables in each principal component is shown.
+
+```{r, var_contribution}
+var_contrib <- get_pca_var(pca)$contrib
+
+# var_contrib <- pca$rotation * sqrt(pca$sdev)
+#
+# Convert variable contributions to a data frame
+var_contrib_df <- var_contrib %>%
+  as.data.frame() %>%
+  mutate(variable = rownames(.)) %>%
+  pivot_longer(-variable, names_to = "principal_component", values_to = "contribution")
+
+# Plot variable contributions to principal components using plotly
+plot <- var_contrib_df %>%
+  plot_ly(x = ~principal_component, y = ~variable, z = ~contribution,
+          type = "heatmap", colorscale = "Viridis") %>%
+  colorbar(title = "Contribution") %>%
+  layout(
+    title = "Variable contributions to PC",
+    xaxis = list(
+      categoryorder = "array",
+      categoryarray = c(paste("Dim.", c(1:length(var_pca)), sep = "")),
+      title = "Principal components"
+    ),
+    yaxis = list(
+      title = "Variable"
+    )
+  )
+
+plot
+```
+
+To assess how many principal components keep in the cluster analysis, one of the most-used method is to maintain all PC that have eigenvalues higher than 1, because an eigenvalue > 1 indicates that PCs account for more variance than accounted by one of the original variables in standardized data.
+
+```{r, eigenvalues}
+df_eig <- get_eigenvalue(pca)
+
+DT::datatable(df_eig, options = list(pageLength = 10))
+
+relevant_pc <- df_eig %>%
+  subset(eigenvalue > 1) %>%
+  pull(eigenvalue) %>%
+  length(.)
+
+pc_df <- data.frame(pca$x[, 1:relevant_pc])
+
+```
+In this case, only the first `r relevant_pc` principal components have been selected, which account for the 75% of the cumulative variance in the data.
+
+# K-means clustering
+
+Identified the Principal Components, a K-means clustering step is employed to group buildings with similar features. The number of cluster is choosen using the *Davies-Bouldin Index* implemented in the *NbClust* package.
+
+```{r, k-means}
+library(NbClust)
+cluster_index <- NbClust(data = pc_df,
+                   distance = "euclidean",
+                   method = "kmeans",
+                   min.nc = 3,
+                   max.nc = 10,
+                   index = "db")
+
+cluster_index$Best.nc[1]
+
+clustering <- kmeans(pc_df, cluster_index$Best.nc[1], nstart = 25)
+
+data_pca$cluster <- clustering$cluster
+data_cleaned$cluster <- as.character(clustering$cluster)
+```
+
+In this case, `r cluster_index$Best.nc[1]` clusters has been identified, which contain the following number and percentage of EPCs in them:
+
+```{r, cluster_size}
+cluster_size <- data.frame(c(1:cluster_index$Best.nc[1]), clustering$size) %>%
+  setNames(c("cluster", "size")) %>%
+  mutate(relative_size = round(size / length(data_pca$cluster) * 100, 2))
+
+cluster_final <- cluster_size %>%
+  subset(relative_size >= 1) %>%
+  pull(cluster)
+
+data_pca_final <- subset(data_pca, cluster %in% cluster_final) %>%
+  mutate(cluster = as.character(cluster))
+
+DT::datatable(cluster_size)
+```
+
+The final part of this report is the explanation of the clustering, plotting the distribution plot of the variable in the dataset for each cluster, in order to characterize the results.
+
+<center>
+```{r}
+var_num <- unlist(lapply(data_cleaned, is.numeric), use.names = FALSE) 
+
+col_cat <- colnames(data_cleaned)[!var_num]
+
+col_cat <- c("classe_energetica", "cluster")
+
+data_long_cat <- data_cleaned %>%
+  select(append("id_certificato", col_cat)) %>%
+  pivot_longer(cols = c(2:(length(colnames(.)) - 1)), names_to = "variable", values_to = "value")
+
+ggplotly(
+  ggplot(data = data_long_cat) +
+    geom_histogram(aes(x = value, fill = cluster), stat = "count", alpha = 0.4) + 
+    theme_bw() +
+    theme(
+      panel.spacing.y = unit(4, "lines"),
+      panel.border = element_blank(),
+      axis.line = element_line(),
+      panel.grid = element_blank(),
+      strip.background = element_rect(color = NA, fill = NA)
+    ) +
+    labs(x = "",
+         y = "",
+         fill = "",
+         title = "classe_energetica")
+) %>%
+  layout(
+    legend = list(
+      orientation = "h",
+      xanchor = "center", 
+      x = 0.5
+    )
+  )
+
+```
+</center>
+
+<center>
+```{r, plot_cluster_num, fig.height=15, fig.width=10}
+ 
+col_num <- colnames(data_cleaned)[var_num]
+
+data_long_num <- data_cleaned %>%
+  select(append(col_num, "cluster")) %>%
+  pivot_longer(cols = c(2:(length(colnames(.)) - 1)), names_to = "variable", values_to = "value")
+
+ggplotly(
+  ggplot(data = data_long_num) +
+    geom_histogram(aes(x = value, fill = cluster), position = 'identity', alpha = 0.4) + 
+    theme_bw() +
+    theme(
+      panel.spacing.y = unit(4, "lines"),
+      panel.border = element_blank(),
+      axis.line = element_line(),
+      panel.grid = element_blank(),
+      strip.background = element_rect(color = NA, fill = NA)
+    ) +
+    facet_wrap(~variable, scales = "free", ncol = 4) + 
+    labs(x = "",
+         y = "",
+         fill = "")
+) %>%
+  layout(
+    legend = list(
+      orientation = "h",
+      xanchor = "center",
+      x = 0.5
+    )
+  )
+
+```
+</center>
+
+Cluster results can be interpreted studying the variable distribution in the cluster. For example, in Cluster 5 there are buildings with lower performance (*classe energetica* equal to D, E, F) while Cluster 8 is composed mostly by buildings with high performance (*classe energetica* equal to A1, A2, A3, A4). Very often, the numerical variables for which the clustering has been performed, assume very different values. For instance, buildings of Cluster 8 have a lower ratio $A_{sol}/A_{sup}$, meaning that probably the summer conditioning required is lower; or the dynamic transmittance $Y_{ie}$ has lower value in Cluster 8 in comparison with Cluster 5, which means that the heat flux crossing the envelope is more mitigated in high performance buildings, decreasing the energy requirement. Furthermore, also the year of construction is important; in fact, buildings built recently have usually an higher performance.
+
+# Conclusion
+
+
+
