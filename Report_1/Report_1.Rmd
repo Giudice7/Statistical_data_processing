@@ -2,7 +2,7 @@
 title: "Multiple linear regression for energy data"
 author: "Rocco Giudice"
 date: "2023-03-31"
-output: 
+output:
   html_document:
     toc: true
     toc_float: true
