@@ -39,14 +39,15 @@ The report is organized as follows:
 * Outlier detection: through interquartile method, outlier detection is performed for all the relevant variable in the dataset.
 * Principal Component Analysis: the PCA is performed analyzing and choosing only the relevant component for describing the majority of the dataset.
 * K-means clustering: a clustering is performed on the relevant principal component of the dataset, statistically describing the output.
+* Conclusion
 
 # Dataset
 
-The dataset used for the analysis is provided by *Regione Piemonte*, at https://www.dati.piemonte.it/#/catalogodetail/regpie_ckan_ckan2_yucca_sdp_smartdatanet.it_Sicee_v_datigen_energetici_v2_8407.
+The dataset used for the analysis is a cleaned dataset, similar to those provided by *Regione Piemonte*, at https://www.dati.piemonte.it/#/catalogodetail/regpie_ckan_ckan2_yucca_sdp_smartdatanet.it_Sicee_v_datigen_energetici_v2_8407.
 
-The dataset contains 633657 rows and 72 columns, where each row contains the certificate data for a building and in columns there are several attributes, both descriptive and numerical. Numerical variables regard the geometrical and performance attributes of the buildings. The details on the variable meaning are provided in the link mentioned above.
+The dataset contains **X** rows and **Y** columns, where each row contains the certificate data for a building and in columns there are several attributes, both descriptive and numerical. Numerical variables regard the geometrical and performance attributes of the buildings. The details on the variable meaning are provided in the link mentioned above.
 
-For simplicity, only a subset of these data has been considered, in particular only certificate that were submitted since 2019, for buildings of category E1 (households) and with winter and summer air conditioning and hot water production. In this way the number of certificates analyzed drops to 26304. 
+For simplicity, only a subset of these data has been considered, in particular only certificate that were submitted since 2019, for buildings of category E1 (households) and with and summer air conditioning and hot water production. In this way the number of certificates analyzed drops to **Z**. 
 
 In the table below is summarized the dataset:
 
@@ -151,7 +152,7 @@ pca <- prcomp(data_scaled)
 summary(pca)
 
 ```
-As you can easily see, just the first 9 components are responsible for almost the 90% of the variance in the dataset, as represented in the figure below:
+As you can easily see, just the first 8 components are responsible for almost the 90% of the variance in the dataset, as represented in the figure below:
 
 ```{r, variance}
 variance <- pca$sdev^2/sum(pca$sdev^2)
@@ -203,7 +204,12 @@ var_contrib_df <- var_contrib %>%
 # Plot variable contributions to principal components using plotly
 plot <- var_contrib_df %>%
   plot_ly(x = ~principal_component, y = ~variable, z = ~contribution,
-          type = "heatmap", colorscale = "Viridis") %>%
+          type = "heatmap", colorscale = "Viridis",
+          hovertemplate = paste("<b>PC</b>: %{x}",
+                                "<br><b>Variable </b>: %{y}<br>",
+                                "<b>Contribution</b>: %{z}",
+                                "<extra></extra>")
+  ) %>%
   colorbar(title = "Contribution") %>%
   layout(
     title = "Variable contributions to PC",
@@ -235,11 +241,20 @@ relevant_pc <- df_eig %>%
 pc_df <- data.frame(pca$x[, 1:relevant_pc])
 
 ```
-In this case, only the first `r relevant_pc` principal components have been selected, which account for the 75% of the cumulative variance in the data.
+In this case, only the first `r relevant_pc` principal components have been selected, which account for the `r round(df_eig$cumulative.variance.percent[relevant_pc])`% of the cumulative variance in the data.
 
 # K-means clustering
 
-Identified the Principal Components, a K-means clustering step is employed to group buildings with similar features. The number of cluster is choosen using the *Davies-Bouldin Index* implemented in the *NbClust* package.
+Identified the Principal Components, a K-means clustering step is employed to group buildings with similar features. The number of cluster is choosen using the *Davies-Bouldin Index* implemented in the *NbClust* package. It is defined as:
+
+$$DB(q) = \frac{1}{q}\sum_{k = 1}^q\max_{k\neq l}\left( \frac{\delta_k + \delta_l}{d_{k,l}}\right)$$
+where:
+
+* k, l = 1, ....q is the number of cluster.
+* $d_{k,l}$ is the distance between centroids of cluster $C_k$ and $C_l$.
+* $\delta_k$ is the standard deviation of distance of objects in cluster $C_k$.
+
+Lower the value, better the clustering results.
 
 ```{r, k-means}
 library(NbClust)
@@ -250,15 +265,35 @@ cluster_index <- NbClust(data = pc_df,
                    max.nc = 10,
                    index = "db")
 
-cluster_index$Best.nc[1]
+# cluster_index$Best.nc[1]
 
 clustering <- kmeans(pc_df, cluster_index$Best.nc[1], nstart = 25)
 
 data_pca$cluster <- clustering$cluster
 data_cleaned$cluster <- as.character(clustering$cluster)
 ```
+<center>
+```{r, DB_plot}
+plot_ly(
+  type = "scatter",
+  mode = "lines+markers",
+  x = c(3:10),
+  y = cluster_index$All.index
+) %>%
+  layout(
+    title = "DB Index",
+    xaxis = list(
+      title = "n° cluster"
+    ),
+    yaxis = list(
+      title = "DB Index"
+    )
+  )
+  
+```
+</center>
 
-In this case, `r cluster_index$Best.nc[1]` clusters has been identified, which contain the following number and percentage of EPCs in them:
+In this case, **`r cluster_index$Best.nc[1]`** clusters has been identified, which contain the following number and percentage of EPCs in them:
 
 ```{r, cluster_size}
 cluster_size <- data.frame(c(1:cluster_index$Best.nc[1]), clustering$size) %>%
@@ -352,9 +387,53 @@ ggplotly(
 ```
 </center>
 
-Cluster results can be interpreted studying the variable distribution in the cluster. For example, in Cluster 5 there are buildings with lower performance (*classe energetica* equal to D, E, F) while Cluster 8 is composed mostly by buildings with high performance (*classe energetica* equal to A1, A2, A3, A4). Very often, the numerical variables for which the clustering has been performed, assume very different values. For instance, buildings of Cluster 8 have a lower ratio $A_{sol}/A_{sup}$, meaning that probably the summer conditioning required is lower; or the dynamic transmittance $Y_{ie}$ has lower value in Cluster 8 in comparison with Cluster 5, which means that the heat flux crossing the envelope is more mitigated in high performance buildings, decreasing the energy requirement. Furthermore, also the year of construction is important; in fact, buildings built recently have usually an higher performance.
+<center>
+```{r, table_perc_classe}
+
+size_classe <- merge(
+  x = data_cleaned %>%
+  group_by(classe_energetica, cluster) %>%
+  summarise(size_classe = n()) %>%
+  ungroup(),
+  y = data_cleaned %>%
+    group_by(classe_energetica) %>%
+    summarise(classe_total = n()),
+  all = TRUE
+) %>%
+  mutate(relative_size = round(size_classe / classe_total * 100, 2)) %>%
+  select(classe_energetica, cluster, relative_size)
+
+plot <- size_classe %>%
+  plot_ly(x = ~classe_energetica, y = ~cluster, z = ~relative_size,
+          type = "heatmap", colorscale = "Viridis",
+          hovertemplate = paste("<b>Classe enrgetica</b>: %{x}",
+                                "<br><b>Cluster </b>: %{y}<br>",
+                                "<b>Size</b>: %{z}",
+                                "<extra></extra>")
+  ) %>%
+  colorbar(title = "Contribution") %>%
+  layout(
+    title = "Cluster assignment in classe energetica",
+    xaxis = list(
+      title = "Classe energetica"
+    ),
+    yaxis = list(
+      title = "Cluster"
+    )
+  )
+
+plot
+
+```
+</center>
+
+Cluster results can be interpreted studying the variable distribution in the cluster. For example, in Cluster 6 there are buildings with lower performance (*classe energetica* equal to F, G) while Cluster 2 is composed mostly by buildings with high performance (*classe energetica* equal to ABC). Very often, the numerical variables for which the clustering has been performed, assume very different values. For instance, buildings of Cluster 2 have a lower ratio $A_{sol}/A_{sup}$, meaning that probably the summer conditioning required is lower; or the dynamic transmittance $Y_{ie}$ has lower value in Cluster 2 in comparison with Cluster 6 which means that the heat flux crossing the envelope is more mitigated in high performance buildings, decreasing the energy requirement. Also the ratio between opaque area and the thermal exchanging surface is important: higher the value, better the performance. Furthermore, also the year of construction is important; in fact, buildings built recently have usually an higher performance.
 
 # Conclusion
+In this report, an high-dimensional clustering on EPC data has been carried out using the Principal Component Analysis. Through PCA, the high dimensional dataset was reduced, identifying the most important features in the dataset through the incorporation in the principal components.
 
+In our case, 7 groups were carried out from the K-means clustering, each of them with unique typical values of the variables employed. In this way, it is possible to group buildings with similar value of the geometrical and thermal attributes and explain in a meaningful way the reasons for their *classe_energetica* allocation, such as made for Cluster 2 and Cluster 6. 
+
+Finally, a possible future work could be the development of a classification model to compare the predicted *classe_energetica* of a building with the real one.
 
 
